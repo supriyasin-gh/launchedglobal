@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Feedback Sentiment Analyzer</title>
+<style>
+:root{
+  --bg:#f6f7fb; --card:#fff; --ink:#1c1e26; --muted:#6b7080; --line:#e7e9f0;
+  --pos:#2fae66; --neg:#e5484d; --neu:#8a8f9c; --accent:#4f5bd5;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:Arial,Helvetica,sans-serif;padding-top:0;}
+.wrap{max-width:1100px;margin:0 auto;padding:24px 16px 48px;}
+h1{font-size:1.4rem;margin:0 0 4px}
+.sub{color:var(--muted);font-size:.88rem;margin:0 0 4px}
+.note{color:var(--muted);font-size:.78rem;margin:0 0 20px;line-height:1.4}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;}
+.card h2{font-size:1rem;margin:0 0 10px}
+.composer{margin-bottom:18px;}
+.composer textarea{width:100%;min-height:80px;resize:vertical;border-radius:10px;border:1px solid var(--line);
+  background:var(--bg);color:var(--ink);padding:10px;font:inherit;font-size:.9rem;}
+.composer-row{display:flex;gap:10px;margin-top:10px;flex-wrap:wrap;align-items:center}
+select,button{border-radius:8px;border:1px solid var(--line);padding:8px 14px;font-size:.85rem;font-family:inherit;}
+select{background:var(--card);color:var(--ink);}
+button{background:var(--accent);color:#fff;border:none;cursor:pointer;font-weight:600;}
+button.secondary{background:transparent;color:var(--muted);border:1px solid var(--line);font-weight:500;}
+.result{margin-top:12px;font-size:.85rem;display:none;padding:10px 12px;border-radius:10px;border:1px solid var(--line);}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px;}
+@media(max-width:720px){.grid{grid-template-columns:repeat(2,1fr)}}
+.kpi .n{font-size:1.6rem;font-weight:700}
+.kpi .l{color:var(--muted);font-size:.78rem;text-transform:uppercase;letter-spacing:.04em}
+.pos{color:var(--pos)} .neg{color:var(--neg)} .neu{color:var(--neu)}
+.row{display:grid;grid-template-columns:2fr 1fr;gap:14px;margin-bottom:14px;}
+@media(max-width:820px){.row{grid-template-columns:1fr}}
+table{width:100%;border-collapse:collapse;font-size:.82rem}
+th,td{text-align:left;padding:7px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--muted);font-weight:600;font-size:.72rem;text-transform:uppercase}
+.badge{padding:2px 8px;border-radius:20px;font-size:.7rem;font-weight:600;white-space:nowrap;}
+.badge.pos{background:rgba(47,174,102,.15);color:var(--pos)} .badge.neg{background:rgba(229,72,77,.15);color:var(--neg)} .badge.neu{background:rgba(138,143,156,.15);color:var(--neu)}
+.overflow{overflow-x:auto;max-height:320px;overflow-y:auto}
+.del{cursor:pointer;color:var(--muted);font-size:.75rem;background:none;border:none;padding:2px 6px;}
+.foot{display:flex;justify-content:space-between;align-items:center;margin-top:16px;color:var(--muted);font-size:.78rem}
+.splitbar{display:flex;height:28px;border-radius:8px;overflow:hidden;margin-bottom:10px;}
+.legend{display:flex;gap:16px;font-size:.8rem;flex-wrap:wrap}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.dot{width:10px;height:10px;border-radius:50%;display:inline-block}
+.issuebar-row{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:.82rem}
+.issuebar-label{width:80px;flex-shrink:0;color:var(--muted)}
+.issuebar-track{flex:1;background:var(--bg);border-radius:6px;height:16px;overflow:hidden}
+.issuebar-fill{height:100%;background:var(--neg);border-radius:6px}
+.issuebar-count{width:24px;text-align:right;color:var(--muted);font-size:.75rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Customer Feedback Sentiment Analyzer</h1>
+  <p class="sub">Real-time classification (Positive / Negative / Neutral) with live trend &amp; issue analysis.</p>
+  <p class="note">Runs 100% in your browser with no external libraries or internet connection required — every chart here is drawn with plain SVG/CSS. Your entries are saved locally in this browser only.</p>
+
+  <div class="card composer">
+    <h2>Classify feedback</h2>
+    <textarea id="inputText" placeholder="Paste one piece of feedback, or multiple lines for batch classification..."></textarea>
+    <div class="composer-row">
+      <select id="sourceSelect">
+        <option value="app_review">App review</option>
+        <option value="support_ticket">Support ticket</option>
+        <option value="survey">Survey</option>
+        <option value="social">Social</option>
+      </select>
+      <button id="classifyBtn">Classify &amp; add</button>
+      <button class="secondary" id="sampleBtn">Load sample batch</button>
+      <button class="secondary" id="clearBtn">Clear all data</button>
+    </div>
+    <div class="result" id="liveResult"></div>
+  </div>
+
+  <div class="grid" id="kpis"></div>
+
+  <div class="row">
+    <div class="card"><h2>Sentiment trend (by entry date)</h2><div id="trendChart"></div></div>
+    <div class="card"><h2>Overall split</h2><div id="splitChart"></div></div>
+  </div>
+
+  <div class="row">
+    <div class="card"><h2>Top issues (negative feedback)</h2><div id="issuesChart"></div></div>
+    <div class="card">
+      <h2>All feedback</h2>
+      <div class="overflow"><table id="feedTable"><thead><tr><th>Text</th><th>Sentiment</th><th></th></tr></thead><tbody></tbody></table></div>
+    </div>
+  </div>
+  <div class="foot"><span id="countLabel"></span><span>Data stored locally in this browser</span></div>
+</div>
+
+<script>
+/* ---------- lexicon-based sentiment engine (no dependencies) ---------- */
+var POS = {great:3,love:3,excellent:3,amazing:3,fantastic:3,perfect:3,awesome:3,best:3,happy:2,good:2,nice:2,helpful:2,
+  fast:2,easy:2,smooth:2,resolved:2,friendly:2,recommend:2,works:1,fine:1,like:1,thanks:2,thank:2,pleased:2,satisfied:2,
+  impressed:3,delight:2,delighted:2,quick:2,responsive:2,intuitive:2,reliable:2,improved:2,value:1,clean:1,simple:1,convenient:1,glad:2};
+var NEG = {bad:2,terrible:3,awful:3,horrible:3,worst:3,hate:3,broken:3,crash:3,crashes:3,crashed:3,bug:2,buggy:2,slow:2,
+  confusing:2,frustrating:3,frustrated:3,disappointed:3,disappointing:3,useless:3,poor:2,issue:1,issues:1,problem:2,problems:2,
+  delay:2,delayed:2,late:2,damaged:3,refund:1,charged:1,error:2,fail:2,failed:2,failing:2,annoying:2,rude:3,unresponsive:2,
+  complaint:2,complain:2,waste:2,angry:3,unacceptable:3,never:1,cancel:2,cancelled:2,overpriced:2,glitch:2,glitches:2,down:1,stuck:2};
+var NEGATORS = {not:1,no:1,never:1,cannot:1,"can't":1,cant:1,"didn't":1,didnt:1,"doesn't":1,doesnt:1,"isn't":1,isnt:1,
+  "wasn't":1,wasnt:1,"wouldn't":1,wouldnt:1,"won't":1,wont:1,without:1};
+var INTENSIFIERS = {very:1.5,extremely:1.8,really:1.4,so:1.3,absolutely:1.7,totally:1.5,completely:1.6};
+var DIMINISHERS = {slightly:.5,somewhat:.6,kinda:.6,rather:.7,fairly:.8};
+var STOP = {a:1,an:1,the:1,is:1,it:1,to:1,of:1,and:1,in:1,on:1,for:1,this:1,that:1,was:1,were:1,are:1,i:1,we:1,
+  you:1,my:1,our:1,with:1,as:1,at:1,be:1,been:1,have:1,has:1,had:1,but:1,or:1,so:1,not:1,just:1,very:1,really:1,im:1,its:1};
+
+function tokenize(text){ return text.toLowerCase().replace(/[^a-z0-9'\s]/g," ").split(/\s+/).filter(function(x){return x;}); }
+
+function classify(text){
+  var tokens = tokenize(text);
+  var score = 0, hits = 0;
+  for(var i=0;i<tokens.length;i++){
+    var w = tokens[i];
+    var base = POS[w] ? POS[w] : (NEG[w] ? -NEG[w] : 0);
+    if(base === 0) continue;
+    var mult = 1;
+    for(var j=Math.max(0,i-3); j<i; j++){
+      if(NEGATORS[tokens[j]]) mult *= -1;
+      if(INTENSIFIERS[tokens[j]]) mult *= INTENSIFIERS[tokens[j]];
+      if(DIMINISHERS[tokens[j]]) mult *= DIMINISHERS[tokens[j]];
+    }
+    score += base * mult;
+    hits++;
+  }
+  var norm = hits ? score / Math.sqrt(hits) : 0;
+  var label = "Neutral";
+  if(norm >= 0.9) label = "Positive";
+  else if(norm <= -0.9) label = "Negative";
+  var confidence = Math.min(0.98, 0.55 + Math.abs(norm)*0.12);
+  var keywords = [];
+  for(var k=0;k<tokens.length && keywords.length<6;k++){
+    var t = tokens[k];
+    if(!STOP[t] && t.length>2 && (NEG[t]||POS[t]||t.length>4)) keywords.push(t);
+  }
+  return {label:label, score:norm, confidence:Math.round(confidence*100)/100, keywords:keywords};
+}
+
+/* ---------- storage ---------- */
+var STORE_KEY = "feedback_store_v2";
+function loadStore(){
+  try{ var raw = localStorage.getItem(STORE_KEY); return raw ? JSON.parse(raw) : null; }
+  catch(e){ return null; }
+}
+function saveStore(items){
+  try{ localStorage.setItem(STORE_KEY, JSON.stringify(items)); }catch(e){ /* storage unavailable */ }
+}
+
+var SAMPLE_BATCH = [
+  ["app_review","The new checkout flow is so much faster, love it!"],
+  ["support_ticket","My order arrived damaged and support hasn't responded in 3 days."],
+  ["survey","It's fine, does what it says, nothing special."],
+  ["app_review","Crashes every time I try to upload a photo. Very frustrating."],
+  ["social","Just switched to your product and honestly it's a game changer for my team."],
+  ["support_ticket","Billing charged me twice this month, please refund."],
+  ["survey","Average experience, the onboarding could be clearer."],
+  ["app_review","Five stars, the customer service rep resolved my issue in minutes."],
+  ["social","Delivery was late again, third time this month."],
+  ["support_ticket","App is slow and keeps logging me out randomly."],
+  ["survey","Great value for the price, will renew my subscription."],
+  ["app_review","The UI redesign is confusing, I can't find the settings menu anymore."],
+  ["social","Shoutout to the support team, they were super helpful and patient."],
+  ["survey","It works but the mobile app really needs dark mode."],
+  ["support_ticket","Refund never processed despite confirmation email, this is unacceptable."]
+];
+
+function daysAgoIso(d){ return new Date(Date.now()-d*86400000).toISOString(); }
+function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+
+function makeResult(text, source, whenIso){
+  var r = classify(text);
+  return {id:uid(), text:text, source:source, sentiment:r.label, confidence:r.confidence, keywords:r.keywords, created_at: whenIso || new Date().toISOString()};
+}
+
+var items = loadStore();
+if(!items){
+  items = [];
+  for(var s=0;s<SAMPLE_BATCH.length;s++){
+    items.push(makeResult(SAMPLE_BATCH[s][1], SAMPLE_BATCH[s][0], daysAgoIso(Math.floor(Math.random()*30))));
+  }
+  saveStore(items);
+}
+
+/* ---------- rendering (pure SVG/CSS, no chart library) ---------- */
+function badge(s){ var c = s==="Positive"?"pos":s==="Negative"?"neg":"neu"; return '<span class="badge '+c+'">'+s+'</span>'; }
+function esc(s){ return s.replace(/</g,'&lt;'); }
+
+function renderTrend(){
+  var byDay = {};
+  items.forEach(function(i){
+    var day = i.created_at.slice(0,10);
+    byDay[day] = byDay[day] || {Positive:0,Negative:0,Neutral:0};
+    byDay[day][i.sentiment]++;
+  });
+  var days = Object.keys(byDay).sort();
+  if(days.length === 0){ document.getElementById('trendChart').innerHTML = '<p style="color:var(--muted);font-size:.85rem">No data yet.</p>'; return; }
+
+  var W = 560, H = 220, padL = 30, padB = 24, padT = 10, padR = 10;
+  var maxVal = 1;
+  days.forEach(function(d){ ['Positive','Negative','Neutral'].forEach(function(s){ maxVal = Math.max(maxVal, byDay[d][s]); }); });
+  var n = days.length;
+  var xStep = n > 1 ? (W - padL - padR) / (n - 1) : 0;
+  function xFor(idx){ return padL + idx * xStep; }
+  function yFor(val){ return H - padB - (val / maxVal) * (H - padT - padB); }
+
+  function seriesPath(key){
+    var pts = days.map(function(d, idx){ return xFor(idx) + ',' + yFor(byDay[d][key]); });
+    return pts.join(' ');
+  }
+
+  var colors = {Positive:'#2fae66', Negative:'#e5484d', Neutral:'#8a8f9c'};
+  var svg = '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;font-family:inherit">';
+  // gridlines
+  for(var g=0; g<=2; g++){
+    var gy = padT + g*(H-padT-padB)/2;
+    svg += '<line x1="'+padL+'" y1="'+gy+'" x2="'+(W-padR)+'" y2="'+gy+'" stroke="var(--line)" stroke-width="1" />';
+  }
+  ['Positive','Negative','Neutral'].forEach(function(key){
+    svg += '<polyline fill="none" stroke="'+colors[key]+'" stroke-width="2" points="'+seriesPath(key)+'" />';
+  });
+  // x labels (first, middle, last)
+  [0, Math.floor((n-1)/2), n-1].forEach(function(idx){
+    if(idx<0) return;
+    svg += '<text x="'+xFor(idx)+'" y="'+(H-4)+'" font-size="9" fill="var(--muted)" text-anchor="middle">'+days[idx].slice(5)+'</text>';
+  });
+  svg += '</svg>';
+  svg += '<div class="legend"><span><i class="dot" style="background:'+colors.Positive+'"></i>Positive</span>' +
+         '<span><i class="dot" style="background:'+colors.Negative+'"></i>Negative</span>' +
+         '<span><i class="dot" style="background:'+colors.Neutral+'"></i>Neutral</span></div>';
+  document.getElementById('trendChart').innerHTML = svg;
+}
+
+function renderSplit(counts, total){
+  var pctPos = total ? (counts.Positive/total*100) : 0;
+  var pctNeg = total ? (counts.Negative/total*100) : 0;
+  var pctNeu = total ? (counts.Neutral/total*100) : 0;
+  var html = '<div class="splitbar">' +
+    (pctPos>0?'<div style="width:'+pctPos+'%;background:#2fae66"></div>':'') +
+    (pctNeg>0?'<div style="width:'+pctNeg+'%;background:#e5484d"></div>':'') +
+    (pctNeu>0?'<div style="width:'+pctNeu+'%;background:#8a8f9c"></div>':'') +
+    '</div>' +
+    '<div class="legend">' +
+    '<span><i class="dot" style="background:#2fae66"></i>Positive '+Math.round(pctPos)+'%</span>' +
+    '<span><i class="dot" style="background:#e5484d"></i>Negative '+Math.round(pctNeg)+'%</span>' +
+    '<span><i class="dot" style="background:#8a8f9c"></i>Neutral '+Math.round(pctNeu)+'%</span>' +
+    '</div>';
+  document.getElementById('splitChart').innerHTML = html;
+}
+
+function renderIssues(){
+  var kwCounts = {};
+  items.filter(function(i){return i.sentiment==="Negative";}).forEach(function(i){
+    i.keywords.forEach(function(k){ kwCounts[k] = (kwCounts[k]||0)+1; });
+  });
+  var ranked = Object.keys(kwCounts).map(function(k){return [k, kwCounts[k]];}).sort(function(a,b){return b[1]-a[1];}).slice(0,8);
+  if(ranked.length === 0){ document.getElementById('issuesChart').innerHTML = '<p style="color:var(--muted);font-size:.85rem">No negative feedback yet.</p>'; return; }
+  var maxCount = ranked[0][1];
+  var html = '';
+  ranked.forEach(function(r){
+    var pct = Math.max(6, r[1]/maxCount*100);
+    html += '<div class="issuebar-row"><div class="issuebar-label">'+esc(r[0])+'</div>' +
+      '<div class="issuebar-track"><div class="issuebar-fill" style="width:'+pct+'%"></div></div>' +
+      '<div class="issuebar-count">'+r[1]+'</div></div>';
+  });
+  document.getElementById('issuesChart').innerHTML = html;
+}
+
+function render(){
+  var counts = {Positive:0, Negative:0, Neutral:0};
+  items.forEach(function(i){counts[i.sentiment]++;});
+  var total = items.length || 1;
+  function pct(k){ return Math.round(counts[k]/total*100); }
+
+  document.getElementById('kpis').innerHTML =
+    '<div class="card kpi"><div class="n">'+items.length+'</div><div class="l">Total feedback</div></div>' +
+    '<div class="card kpi"><div class="n pos">'+pct('Positive')+'%</div><div class="l">Positive</div></div>' +
+    '<div class="card kpi"><div class="n neg">'+pct('Negative')+'%</div><div class="l">Negative</div></div>' +
+    '<div class="card kpi"><div class="n neu">'+pct('Neutral')+'%</div><div class="l">Neutral</div></div>';
+  document.getElementById('countLabel').textContent = items.length + ' feedback items stored';
+
+  renderTrend();
+  renderSplit(counts, items.length);
+  renderIssues();
+
+  var tbody = document.querySelector('#feedTable tbody');
+  var rows = items.slice().reverse().map(function(i){
+    return '<tr><td>'+esc(i.text)+'</td><td>'+badge(i.sentiment)+'</td><td><button class="del" data-id="'+i.id+'">x</button></td></tr>';
+  });
+  tbody.innerHTML = rows.join('');
+  var delButtons = tbody.querySelectorAll('.del');
+  for(var b=0;b<delButtons.length;b++){
+    delButtons[b].addEventListener('click', function(e){
+      var id = e.target.getAttribute('data-id');
+      items = items.filter(function(i){ return i.id !== id; });
+      saveStore(items); render();
+    });
+  }
+}
+
+document.getElementById('classifyBtn').addEventListener('click', function(){
+  var raw = document.getElementById('inputText').value.trim();
+  if(!raw) return;
+  var source = document.getElementById('sourceSelect').value;
+  var lines = raw.split("\n").map(function(l){return l.trim();}).filter(function(l){return l;});
+  var lastResult = null;
+  lines.forEach(function(line){ lastResult = makeResult(line, source); items.push(lastResult); });
+  saveStore(items);
+  var box = document.getElementById('liveResult');
+  box.style.display = 'block';
+  box.innerHTML = lines.length===1
+    ? badge(lastResult.sentiment) + ' &nbsp; confidence ' + Math.round(lastResult.confidence*100) + '% &nbsp; <span style="color:var(--muted)">keywords: ' + (lastResult.keywords.join(', ')||'—') + '</span>'
+    : 'Classified ' + lines.length + ' items and added them below.';
+  document.getElementById('inputText').value = '';
+  render();
+});
+
+document.getElementById('sampleBtn').addEventListener('click', function(){
+  document.getElementById('inputText').value = SAMPLE_BATCH.slice(0,5).map(function(s){return s[1];}).join("\n");
+});
+
+document.getElementById('clearBtn').addEventListener('click', function(){
+  if(!confirm('Clear all stored feedback?')) return;
+  items = [];
+  saveStore(items);
+  render();
+});
+
+render();
+</script>
+</body>
+</html>
